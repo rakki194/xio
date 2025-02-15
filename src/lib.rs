@@ -77,13 +77,16 @@ pub async fn walk_directory<F, Fut>(
     callback: F
 ) -> anyhow::Result<()>
 where
-    F: Fn(&Path) -> Fut,
+    F: Fn(&Path) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = anyhow::Result<()>> + Send + 'static,
 {
     let dir_ref = dir.as_ref();
     #[cfg(debug_assertions)]
     println!("Starting walk of directory: {:?}", dir_ref);
     let walker = WalkDir::new(dir_ref).follow_links(true);
+
+    let callback = Arc::new(callback);
+    let mut handles = Vec::new();
 
     for entry in walker
         .into_iter()
@@ -114,9 +117,18 @@ where
             if ext.to_string_lossy() == extension {
                 #[cfg(debug_assertions)]
                 println!("  Processing file: {:?}", path);
-                callback(&path).await?;
+                let callback = Arc::clone(&callback);
+                let handle = tokio::spawn(async move {
+                    callback(&path).await
+                });
+                handles.push(handle);
             }
         }
+    }
+
+    // Wait for all tasks to complete and collect any errors
+    for handle in handles {
+        handle.await??;
     }
 
     Ok(())
