@@ -1,13 +1,15 @@
-# Common Library
+# xio
 
-A utility library providing common functionality for file system operations and asynchronous file processing.
+A utility library providing common functionality for file system operations and asynchronous file processing in Rust. Designed for efficient file traversal, content manipulation, and batch processing tasks.
 
 ## Features
 
-- Asynchronous file processing utilities
-- Directory walking with extension filtering
-- File system utilities for common operations
-- Error handling with `anyhow`
+- 🚀 Asynchronous file operations using Tokio
+- 📁 Smart directory traversal with customizable filters
+- 🔍 Extension-based file filtering
+- ⚡ Parallel file processing capabilities
+- 🛡️ Robust error handling with anyhow
+- 🎯 Skip common unwanted paths (.git, target, hidden files)
 
 ## Installation
 
@@ -15,63 +17,108 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-xio = { path = "../xio" }
+xio = "0.1.1"
 ```
 
-## Usage
+## Usage Examples
 
-### Processing Files
+### Walking Directories and Processing Files
 
-```rust
-use xio::{process_file, Path};
-
-async fn process_my_file(path: &Path) -> anyhow::Result<()> {
-    let processor = |file_path: &Path| async move {
-        // Process the file here
-        Ok(())
-    };
-    
-    process_file(path, processor).await
-}
-```
-
-### Walking Directories
+Process all files with a specific extension in a directory:
 
 ```rust
 use xio::{walk_directory, Path};
+use anyhow::Result;
 
-async fn process_txt_files(dir: &Path) -> anyhow::Result<()> {
-    let processor = |file_path: &Path| async move {
-        // Process each .txt file here
+async fn process_json_files(dir: &str) -> Result<()> {
+    walk_directory(dir, "json", |path| async move {
+        // Read the file content
+        let content = xio::read_file_content(path).await?;
+        println!("Processing {}: {} bytes", path.display(), content.len());
         Ok(())
-    };
-    
-    walk_directory(dir, "txt", processor).await
+    }).await
 }
 ```
 
-### File System Utilities
+### Reading and Writing Files
 
 ```rust
-use xio::fs::{has_extension, get_files_with_extension, read_to_string};
+use xio::{Path, read_file_content, write_to_file};
+use anyhow::Result;
 
-// Check file extension
-let is_txt = has_extension(Path::new("file.txt"), "txt");
-
-// Get all files with specific extension
-let txt_files = get_files_with_extension(Path::new("./"), "txt");
-
-// Read file contents
-let content = read_to_string(Path::new("file.txt"))?;
+async fn copy_and_modify_file(src: &str, dest: &str) -> Result<()> {
+    // Read source file
+    let content = read_file_content(Path::new(src)).await?;
+    
+    // Modify content
+    let modified = content.to_uppercase();
+    
+    // Write to destination
+    write_to_file(Path::new(dest), &modified).await?;
+    Ok(())
+}
 ```
 
-## Testing
+### Processing Rust Files
 
-Run the test suite:
+Special utilities for working with Rust source files:
 
-```bash
-cargo test
+```rust
+use xio::{walk_rust_files, Path};
+use std::io;
+
+async fn find_long_rust_files(dir: &str) -> io::Result<()> {
+    walk_rust_files(dir, |path| async move {
+        let content = xio::read_file_content(path).await?;
+        if content.lines().count() > 100 {
+            println!("Long file found: {}", path.display());
+        }
+        Ok(())
+    }).await
+}
 ```
+
+### Batch File Operations
+
+Delete all files with a specific extension:
+
+```rust
+use xio::{delete_files_with_extension, Path};
+
+async fn cleanup_temp_files(dir: &str) -> io::Result<()> {
+    delete_files_with_extension(Path::new(dir), "tmp").await
+}
+```
+
+### Reading File Lines
+
+```rust
+use xio::{read_lines, Path};
+
+async fn count_non_empty_lines(path: &str) -> io::Result<usize> {
+    let lines = read_lines(Path::new(path)).await?;
+    Ok(lines.iter().filter(|line| !line.is_empty()).count())
+}
+```
+
+## Advanced Features
+
+### Smart Path Filtering
+
+The library automatically skips:
+- Hidden files and directories (except "." and "..")
+- Git directories (.git)
+- Rust target directories (target)
+
+### Error Handling
+
+All operations return `Result` types with detailed error information:
+- `io::Result` for basic file operations
+- `anyhow::Result` for more complex operations with rich error context
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
