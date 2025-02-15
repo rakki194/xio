@@ -23,7 +23,7 @@ xio = { path = "../xio" }
 ### Processing Files
 
 ```rust
-use kio::{process_file, Path};
+use xio::{process_file, Path};
 
 async fn process_my_file(path: &Path) -> anyhow::Result<()> {
     let processor = |file_path: &Path| async move {
@@ -38,7 +38,7 @@ async fn process_my_file(path: &Path) -> anyhow::Result<()> {
 ### Walking Directories
 
 ```rust
-use kio::{walk_directory, Path};
+use xio::{walk_directory, Path};
 
 async fn process_txt_files(dir: &Path) -> anyhow::Result<()> {
     let processor = |file_path: &Path| async move {
@@ -53,7 +53,7 @@ async fn process_txt_files(dir: &Path) -> anyhow::Result<()> {
 ### File System Utilities
 
 ```rust
-use kio::fs::{has_extension, get_files_with_extension, read_to_string};
+use xio::fs::{has_extension, get_files_with_extension, read_to_string};
 
 // Check file extension
 let is_txt = has_extension(Path::new("file.txt"), "txt");
@@ -75,4 +75,4 @@ cargo test
 
 ## License
 
-This project is licensed under the MIT License. 
+This project is licensed under the MIT License.
