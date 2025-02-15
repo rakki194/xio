@@ -33,8 +33,7 @@ pub fn is_hidden(entry: &DirEntry) -> bool {
     entry
         .file_name()
         .to_str()
-        .map(|s| s.starts_with('.') && s != "." && s != "..")
-        .unwrap_or(false)
+        .is_some_and(|s| s.starts_with('.') && s != "." && s != "..")
 }
 
 /// Determines if a directory entry is a target directory.
@@ -81,8 +80,7 @@ where
     Fut: std::future::Future<Output = anyhow::Result<()>> + Send + 'static,
 {
     let dir_ref = dir.as_ref();
-    #[cfg(debug_assertions)]
-    println!("Starting walk of directory: {:?}", dir_ref);
+    println!("Starting walk of directory: {dir_ref:?}");
     let walker = WalkDir::new(dir_ref).follow_links(true);
 
     let callback = Arc::new(callback);
@@ -92,31 +90,25 @@ where
         .into_iter()
         .filter_entry(|e| {
             let keep = !is_hidden(e) && !is_git_dir(e) && !is_target_dir(e);
-            #[cfg(debug_assertions)]
             println!("Filtering entry: {:?}, keep: {}", e.path(), keep);
             keep
         })
         .filter_map(|r| {
             if let Ok(entry) = r {
-                #[cfg(debug_assertions)]
                 println!("Found valid entry: {:?}", entry.path());
                 Some(entry)
             } else {
-                #[cfg(debug_assertions)]
                 println!("Invalid entry: {:?}", r.err());
                 None
             }
         })
     {
         let path = entry.path().to_owned();
-        #[cfg(debug_assertions)]
-        println!("Processing path: {:?}", path);
+        println!("Processing path: {path:?}");
         if let Some(ext) = path.extension() {
-            #[cfg(debug_assertions)]
-            println!("  Extension: {:?}", ext);
+            println!("  Extension: {ext:?}");
             if ext.to_string_lossy() == extension {
-                #[cfg(debug_assertions)]
-                println!("  Processing file: {:?}", path);
+                println!("  Processing file: {path:?}");
                 let callback = Arc::clone(&callback);
                 let handle = tokio::spawn(async move {
                     callback(&path).await
