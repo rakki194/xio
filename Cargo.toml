@@ -3,6 +3,9 @@ name = "xio"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "A utility library providing common functionality for file system operations and asynchronous file processing"
+documentation = "https://docs.rs/xio"
+repository = "https://github.com/rakki194/xio"
 
 [dependencies]
 anyhow = { version = "1.0.95", features = ["backtrace"] }
