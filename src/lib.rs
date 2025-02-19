@@ -7,8 +7,8 @@ pub use walkdir;
 
 // Re-export commonly used types
 pub use std::{
-    path::{Path, PathBuf},
     io::{self, Result as IoResult},
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::{
@@ -73,7 +73,7 @@ pub fn is_git_dir(entry: &DirEntry) -> bool {
 pub async fn walk_directory<F, Fut>(
     dir: impl AsRef<Path>,
     extension: &str,
-    callback: F
+    callback: F,
 ) -> anyhow::Result<()>
 where
     F: Fn(&Path) -> Fut + Send + Sync + 'static,
@@ -110,9 +110,7 @@ where
             if ext.to_string_lossy() == extension {
                 println!("  Processing file: {path:?}");
                 let callback = Arc::clone(&callback);
-                let handle = tokio::spawn(async move {
-                    callback(&path).await
-                });
+                let handle = tokio::spawn(async move { callback(&path).await });
                 handles.push(handle);
             }
         }
@@ -286,7 +284,7 @@ pub async fn open_files_in_neovim(files: &[PathBuf]) -> anyhow::Result<()> {
 }
 
 /// Process a file with the given function
-/// 
+///
 /// # Errors
 /// Returns an error if:
 /// - The processor function returns an error
@@ -299,12 +297,15 @@ where
 }
 
 /// Process a Rust file and check for pedantic warnings
-/// 
+///
 /// # Errors
 /// Returns an error if:
 /// - The file cannot be read
 /// - The file cannot be processed
-pub async fn process_rust_file(path: &Path, files_without_warning: &mut Vec<PathBuf>) -> io::Result<()> {
+pub async fn process_rust_file(
+    path: &Path,
+    files_without_warning: &mut Vec<PathBuf>,
+) -> io::Result<()> {
     let content = read_file_content(path).await?;
     if !content.contains("#![warn(clippy::all, clippy::pedantic)]") {
         files_without_warning.push(path.to_path_buf());
@@ -343,12 +344,12 @@ mod tests {
         let temp_dir = TempDir::new()?;
         let test_dir = temp_dir.path().join("test_dir");
         fs::create_dir(&test_dir)?;
-        
+
         // Create test files with different extensions
         File::create(test_dir.join("test1.txt"))?;
         File::create(test_dir.join("test2.txt"))?;
         File::create(test_dir.join("test3.dat"))?;
-        
+
         // Create a subdirectory with more files
         let sub_dir = test_dir.join("subdir");
         fs::create_dir(&sub_dir)?;
@@ -366,9 +367,9 @@ mod tests {
         };
 
         walk_directory(&test_dir, "txt", processor).await?;
-        
+
         // Should have processed 3 .txt files
         assert_eq!(processed_files.load(std::sync::atomic::Ordering::SeqCst), 3);
         Ok(())
     }
-} 
+}
