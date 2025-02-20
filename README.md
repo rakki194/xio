@@ -19,7 +19,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-xio = "0.1.5"
+xio = "0.1.6"
 ```
 
 ## Core Functions
