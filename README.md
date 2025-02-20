@@ -19,14 +19,16 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-xio = "0.1.2"
+xio = "0.1.4"
 ```
 
-## Usage Examples
+## Core Functions
 
-### Walking Directories and Processing Files
+### Directory Walking and File Processing
 
-Process all files with a specific extension in a directory:
+#### `walk_directory`
+
+Asynchronously walks through a directory and processes files with a specific extension.
 
 ```rust
 use xio::{walk_directory, Path};
@@ -37,7 +39,6 @@ async fn process_json_files(dir: &str) -> Result<()> {
         dir,
         "json",
         |path| async move {
-            // Process each JSON file
             println!("Processing: {}", path.display());
             Ok(())
         }
@@ -45,132 +46,206 @@ async fn process_json_files(dir: &str) -> Result<()> {
 }
 ```
 
-### Multiple Extensions
+#### `walk_rust_files`
 
-Process files with multiple extensions:
-
-```rust
-use xio::{walk_directory, Path};
-use anyhow::Result;
-
-async fn process_image_files(dir: &str) -> Result<()> {
-    walk_directory(
-        dir,
-        "jpg;jpeg;png;webp",  // Semicolon-separated list of extensions
-        |path| async move {
-            println!("Processing image: {}", path.display());
-            Ok(())
-        }
-    ).await
-}
-```
-
-### Reading and Writing Files
-
-```rust
-use xio::{read_file_content, write_to_file, Path};
-use anyhow::Result;
-
-async fn modify_file_content(path: &str) -> Result<()> {
-    // Read file content
-    let content = read_file_content(Path::new(path)).await?;
-    
-    // Modify content
-    let modified = content.to_uppercase();
-    
-    // Write back to file
-    write_to_file(Path::new(path), &modified).await?;
-    Ok(())
-}
-```
-
-### Processing Rust Files
-
-Special utilities for working with Rust source files:
+Specifically designed for processing Rust source files, automatically skipping irrelevant directories.
 
 ```rust
 use xio::{walk_rust_files, Path};
-use std::io;
+use anyhow::Result;
 
-async fn find_long_rust_files(dir: &str) -> io::Result<()> {
+async fn analyze_rust_code(dir: &str) -> Result<()> {
     walk_rust_files(dir, |path| async move {
         let content = xio::read_file_content(path).await?;
-        if content.lines().count() > 100 {
-            println!("Long file found: {}", path.display());
-        }
+        println!("Analyzing Rust file: {}, size: {} bytes", 
+                path.display(), content.len());
         Ok(())
     }).await
 }
 ```
 
-### Batch File Operations
+### File Operations
 
-Delete all files with a specific extension:
+#### `read_file_content`
+
+Asynchronously reads the entire content of a file as a string.
 
 ```rust
-use xio::{delete_files_with_extension, Path};
+use xio::{read_file_content, Path};
+use anyhow::Result;
 
-async fn cleanup_temp_files(dir: &str) -> io::Result<()> {
-    delete_files_with_extension(Path::new(dir), "tmp").await
+async fn read_and_process(path: &str) -> Result<()> {
+    let content = read_file_content(Path::new(path)).await?;
+    println!("File content length: {}", content.len());
+    Ok(())
 }
 ```
 
-### Smart Path Filtering
+#### `read_lines`
 
-The library automatically skips:
-
-- Hidden files and directories (except "." and "..")
-- Git directories (.git)
-- Rust target directories (target)
-
-You can see this in action when using `walk_directory`:
+Asynchronously reads a file line by line, returning a vector of strings.
 
 ```rust
-use xio::{walk_directory, Path};
+use xio::{read_lines, Path};
 use anyhow::Result;
 
-async fn process_visible_files(dir: &str) -> Result<()> {
-    walk_directory(
-        dir,
-        "txt",
-        |path| async move {
-            // This will only process visible .txt files
-            // Skips .git/, target/, and hidden files
-            println!("Processing: {}", path.display());
-            Ok(())
+async fn process_lines(path: &str) -> Result<()> {
+    let lines = read_lines(Path::new(path)).await?;
+    for (i, line) in lines.iter().enumerate() {
+        println!("Line {}: {}", i + 1, line);
+    }
+    Ok(())
+}
+```
+
+#### `write_to_file`
+
+Asynchronously writes content to a file.
+
+```rust
+use xio::{write_to_file, Path};
+use anyhow::Result;
+
+async fn save_content(path: &str, content: &str) -> Result<()> {
+    write_to_file(Path::new(path), content).await?;
+    println!("Content saved successfully!");
+    Ok(())
+}
+```
+
+### File System Utilities
+
+#### `delete_files_with_extension`
+
+Recursively deletes all files with a specific extension in a directory.
+
+```rust
+use xio::{delete_files_with_extension, Path};
+use anyhow::Result;
+
+async fn cleanup_temp_files(dir: &str) -> Result<()> {
+    delete_files_with_extension(Path::new(dir), "tmp").await?;
+    println!("Temporary files cleaned up!");
+    Ok(())
+}
+```
+
+#### `check_file_for_multiple_lines`
+
+Checks if a file contains multiple lines and adds it to a tracked list.
+
+```rust
+use xio::{check_file_for_multiple_lines, Path, PathBuf};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use anyhow::Result;
+
+async fn find_multiline_files(path: &str) -> Result<()> {
+    let multi_line_files = Arc::new(Mutex::new(Vec::new()));
+    check_file_for_multiple_lines(
+        Path::new(path),
+        Arc::clone(&multi_line_files)
+    ).await?;
+    
+    let files = multi_line_files.lock().await;
+    println!("Found {} files with multiple lines", files.len());
+    Ok(())
+}
+```
+
+### File Extension Utilities
+
+#### `has_extension`
+
+Checks if a file has a specific extension.
+
+```rust
+use xio::fs::has_extension;
+use std::path::Path;
+
+fn check_file_type(path: &str) {
+    let path = Path::new(path);
+    if has_extension(path, "rs") {
+        println!("This is a Rust source file!");
+    }
+}
+```
+
+#### `get_files_with_extension`
+
+Returns an iterator over all files with a specific extension in a directory.
+
+```rust
+use xio::fs::get_files_with_extension;
+use std::path::Path;
+
+fn list_markdown_files(dir: &str) {
+    let files = get_files_with_extension(Path::new(dir), "md");
+    for file in files {
+        println!("Found markdown file: {}", file.display());
+    }
+}
+```
+
+### Path Filtering Functions
+
+#### `is_hidden`
+
+Determines if a directory entry is hidden (starts with a dot).
+
+```rust
+use xio::is_hidden;
+use walkdir::WalkDir;
+
+fn list_visible_files(dir: &str) {
+    for entry in WalkDir::new(dir).into_iter().filter_map(Result::ok) {
+        if !is_hidden(&entry) {
+            println!("Visible entry: {}", entry.path().display());
         }
-    ).await
+    }
+}
+```
+
+#### `is_target_dir` and `is_git_dir`
+
+Helper functions to identify Rust target directories and Git repositories.
+
+```rust
+use xio::{is_target_dir, is_git_dir};
+use walkdir::WalkDir;
+
+fn list_project_files(dir: &str) {
+    for entry in WalkDir::new(dir).into_iter().filter_map(Result::ok) {
+        if !is_target_dir(&entry) && !is_git_dir(&entry) {
+            println!("Project file: {}", entry.path().display());
+        }
+    }
 }
 ```
 
 ## Error Handling
 
-All operations return `Result` types with detailed error information:
-
-- `io::Result` for basic file operations
-- `anyhow::Result` for more complex operations with rich error context
-
-Example with error handling:
+The library uses `anyhow` for rich error handling and `io::Result` for basic operations. All functions return appropriate Result types with detailed error context.
 
 ```rust
 use xio::{walk_directory, Path};
 use anyhow::{Context, Result};
 
-async fn process_files(dir: &str) -> Result<()> {
+async fn process_with_context(dir: &str) -> Result<()> {
     walk_directory(
         dir,
-        "dat",
+        "log",
         |path| async move {
             let content = xio::read_file_content(path)
                 .await
-                .with_context(|| format!("Failed to read {}", path.display()))?;
+                .with_context(|| format!("Failed to read log file: {}", path.display()))?;
             
             // Process content...
             Ok(())
         }
     )
     .await
-    .with_context(|| format!("Failed to process directory: {}", dir))
+    .with_context(|| format!("Failed to process log files in directory: {}", dir))
 }
 ```
 

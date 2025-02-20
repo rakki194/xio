@@ -1,14 +1,18 @@
+#![warn(clippy::all, clippy::pedantic)]
+
 use std::path::Path;
 
 /// Check if a file has a specific extension
 #[must_use]
 pub fn has_extension(path: &Path, extension: &str) -> bool {
-    path.extension()
-        .is_some_and(|ext| ext == extension)
+    path.extension().is_some_and(|ext| ext == extension)
 }
 
 /// Get all files in a directory with a specific extension
-pub fn get_files_with_extension<'a>(dir: &'a Path, extension: &'a str) -> impl Iterator<Item = std::path::PathBuf> + 'a {
+pub fn get_files_with_extension<'a>(
+    dir: &'a Path,
+    extension: &'a str,
+) -> impl Iterator<Item = std::path::PathBuf> + 'a {
     walkdir::WalkDir::new(dir)
         .into_iter()
         .filter_map(Result::ok)
@@ -17,7 +21,7 @@ pub fn get_files_with_extension<'a>(dir: &'a Path, extension: &'a str) -> impl I
 }
 
 /// Read a file to string with proper error handling
-/// 
+///
 /// # Errors
 /// Returns an error if:
 /// - The file cannot be read
@@ -45,25 +49,25 @@ mod tests {
     #[test]
     fn test_get_files_with_extension() -> anyhow::Result<()> {
         let temp_dir = TempDir::new()?;
-        
+
         // Create test files
         File::create(temp_dir.path().join("test1.txt"))?;
         File::create(temp_dir.path().join("test2.txt"))?;
         File::create(temp_dir.path().join("test3.dat"))?;
-        
+
         // Create subdirectory with more files
         let sub_dir = temp_dir.path().join("subdir");
         fs::create_dir(&sub_dir)?;
         File::create(sub_dir.join("test4.txt"))?;
 
         let files: Vec<_> = get_files_with_extension(temp_dir.path(), "txt").collect();
-        
+
         assert_eq!(files.len(), 3);
         assert!(files.iter().all(|path| path.extension().unwrap() == "txt"));
-        
+
         let dat_files: Vec<_> = get_files_with_extension(temp_dir.path(), "dat").collect();
         assert_eq!(dat_files.len(), 1);
-        
+
         Ok(())
     }
 
@@ -71,16 +75,16 @@ mod tests {
     fn test_read_to_string() -> anyhow::Result<()> {
         let temp_dir = TempDir::new()?;
         let file_path = temp_dir.path().join("test.txt");
-        
+
         // Test successful read
         fs::write(&file_path, "Hello, World!")?;
         let content = read_to_string(&file_path)?;
         assert_eq!(content, "Hello, World!");
-        
+
         // Test non-existent file
         let result = read_to_string(Path::new("nonexistent.txt"));
         assert!(result.is_err());
-        
+
         Ok(())
     }
-} 
+}
