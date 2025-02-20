@@ -1,6 +1,6 @@
 [package]
 name = "xio"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 license = "MIT"
 description = "A utility library providing common functionality for file system operations and asynchronous file processing"

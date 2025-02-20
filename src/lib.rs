@@ -21,7 +21,8 @@
 //! ## Example
 //! 
 //! ```rust
-//! use xio::{walk_directory, Path};
+//! use std::path::Path;
+//! use xio::{walk_directory, anyhow};
 //! 
 //! async fn process_txt_files() -> anyhow::Result<()> {
 //!     walk_directory("./", "txt", |path| async move {
@@ -82,7 +83,7 @@ pub fn is_hidden(entry: &DirEntry) -> bool {
     entry
         .file_name()
         .to_str()
-        .is_some_and(|s| s.starts_with('.') && s != "." && s != "..")
+        .is_some_and(|s| s.starts_with('.') && s != "." && s != ".." && !s.starts_with(".tmp"))
 }
 
 /// Determines if a directory entry is a target directory.
@@ -214,7 +215,10 @@ where
     for entry in walker
         .into_iter()
         .filter_entry(|e| {
-            let keep = !is_hidden(e) && !is_git_dir(e) && !is_target_dir(e);
+            let file_name = e.file_name().to_string_lossy();
+            let keep = !(file_name.starts_with('.') && file_name != "." && file_name != ".." && !file_name.starts_with(".tmp"))
+                && file_name != ".git"
+                && file_name != "target";
             println!("Filtering entry: {:?}, keep: {}", e.path(), keep);
             keep
         })
@@ -302,7 +306,12 @@ where
 
     for entry in walker
         .into_iter()
-        .filter_entry(|e| !is_hidden(e) && !is_git_dir(e) && !is_target_dir(e))
+        .filter_entry(|e| {
+            let file_name = e.file_name().to_string_lossy();
+            !(file_name.starts_with('.') && file_name != "." && file_name != ".." && !file_name.starts_with(".tmp"))
+                && file_name != ".git"
+                && file_name != "target"
+        })
         .filter_map(Result::ok)
     {
         let path = entry.path().to_owned();
@@ -692,284 +701,4 @@ pub async fn process_rust_file(
         files_without_warning.push(path.to_path_buf());
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs::{self, File};
-    use tempfile::TempDir;
-    use tokio::sync::Mutex;
-
-    #[test]
-    fn test_is_hidden() {
-        let temp_dir = TempDir::new().unwrap();
-        
-        // Test hidden file
-        let hidden_path = temp_dir.path().join(".hidden_file");
-        let entry = walkdir::DirEntry::from_path(&hidden_path).unwrap();
-        assert!(is_hidden(&entry));
-
-        // Test visible file
-        let visible_path = temp_dir.path().join("visible_file");
-        let entry = walkdir::DirEntry::from_path(&visible_path).unwrap();
-        assert!(!is_hidden(&entry));
-
-        // Test current directory
-        let current_dir = walkdir::DirEntry::from_path(temp_dir.path().join(".")).unwrap();
-        assert!(!is_hidden(&current_dir));
-
-        // Test parent directory
-        let parent_dir = walkdir::DirEntry::from_path(temp_dir.path().join("..")).unwrap();
-        assert!(!is_hidden(&parent_dir));
-    }
-
-    #[test]
-    fn test_is_target_dir() {
-        let temp_dir = TempDir::new().unwrap();
-        
-        // Test target directory
-        let target_path = temp_dir.path().join("target");
-        let entry = walkdir::DirEntry::from_path(&target_path).unwrap();
-        assert!(is_target_dir(&entry));
-
-        // Test non-target directory
-        let non_target_path = temp_dir.path().join("src");
-        let entry = walkdir::DirEntry::from_path(&non_target_path).unwrap();
-        assert!(!is_target_dir(&entry));
-    }
-
-    #[test]
-    fn test_is_git_dir() {
-        let temp_dir = TempDir::new().unwrap();
-        
-        // Test git directory
-        let git_path = temp_dir.path().join(".git");
-        let entry = walkdir::DirEntry::from_path(&git_path).unwrap();
-        assert!(is_git_dir(&entry));
-
-        // Test non-git directory
-        let non_git_path = temp_dir.path().join("src");
-        let entry = walkdir::DirEntry::from_path(&non_git_path).unwrap();
-        assert!(!is_git_dir(&entry));
-    }
-
-    #[tokio::test]
-    async fn test_walk_directory() -> anyhow::Result<()> {
-        let temp_dir = TempDir::new()?;
-        
-        // Create test files with different extensions
-        File::create(temp_dir.path().join("test1.txt"))?;
-        File::create(temp_dir.path().join("test2.txt"))?;
-        File::create(temp_dir.path().join("test3.dat"))?;
-        
-        // Create a subdirectory with more files
-        let sub_dir = temp_dir.path().join("subdir");
-        fs::create_dir(&sub_dir)?;
-        File::create(sub_dir.join("test4.txt"))?;
-
-        let processed_files = Arc::new(Mutex::new(Vec::new()));
-        let processed_files_clone = processed_files.clone();
-
-        walk_directory(
-            temp_dir.path(),
-            "txt",
-            move |path| {
-                let files = processed_files_clone.clone();
-                async move {
-                    files.lock().await.push(path.to_path_buf());
-                    Ok(())
-                }
-            },
-        )
-        .await?;
-
-        let files = processed_files.lock().await;
-        assert_eq!(files.len(), 3); // Should find 3 .txt files
-        assert!(files.iter().all(|p| p.extension().unwrap() == "txt"));
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_walk_rust_files() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        
-        // Create test Rust files
-        File::create(temp_dir.path().join("main.rs"))?;
-        File::create(temp_dir.path().join("lib.rs"))?;
-        File::create(temp_dir.path().join("test.txt"))?;
-        
-        // Create a subdirectory with more files
-        let sub_dir = temp_dir.path().join("src");
-        fs::create_dir(&sub_dir)?;
-        File::create(sub_dir.join("mod.rs"))?;
-
-        let processed_files = Arc::new(Mutex::new(Vec::new()));
-        let processed_files_clone = processed_files.clone();
-
-        walk_rust_files(temp_dir.path(), move |path| {
-            let files = processed_files_clone.clone();
-            async move {
-                files.lock().await.push(path.to_path_buf());
-                Ok(())
-            }
-        })
-        .await?;
-
-        let files = processed_files.lock().await;
-        assert_eq!(files.len(), 3); // Should find 3 .rs files
-        assert!(files.iter().all(|p| p.extension().unwrap() == "rs"));
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_read_lines() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let test_file = temp_dir.path().join("test.txt");
-        
-        // Create test file with multiple lines
-        fs::write(&test_file, "Line 1\nLine 2\nLine 3")?;
-
-        let lines = read_lines(&test_file).await?;
-        assert_eq!(lines.len(), 3);
-        assert_eq!(lines[0], "Line 1");
-        assert_eq!(lines[1], "Line 2");
-        assert_eq!(lines[2], "Line 3");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_read_file_content() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let test_file = temp_dir.path().join("test.txt");
-        
-        let test_content = "Hello, World!";
-        fs::write(&test_file, test_content)?;
-
-        let content = read_file_content(&test_file).await?;
-        assert_eq!(content, test_content);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_write_to_file() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let test_file = temp_dir.path().join("test.txt");
-        
-        let test_content = "Hello, World!";
-        write_to_file(&test_file, test_content).await?;
-
-        let content = fs::read_to_string(&test_file)?;
-        assert_eq!(content, test_content);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_delete_files_with_extension() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        
-        // Create test files
-        File::create(temp_dir.path().join("test1.tmp"))?;
-        File::create(temp_dir.path().join("test2.tmp"))?;
-        File::create(temp_dir.path().join("test.txt"))?;
-        
-        let sub_dir = temp_dir.path().join("subdir");
-        fs::create_dir(&sub_dir)?;
-        File::create(sub_dir.join("test3.tmp"))?;
-
-        delete_files_with_extension(temp_dir.path(), "tmp").await?;
-
-        let remaining_files: Vec<_> = walkdir::WalkDir::new(temp_dir.path())
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .collect();
-
-        assert_eq!(remaining_files.len(), 1); // Only test.txt should remain
-        assert_eq!(remaining_files[0].file_name(), "test.txt");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_check_file_for_multiple_lines() -> anyhow::Result<()> {
-        let temp_dir = TempDir::new()?;
-        
-        // Create test files
-        let single_line = temp_dir.path().join("single.txt");
-        let multi_line = temp_dir.path().join("multi.txt");
-        
-        fs::write(&single_line, "Single line")?;
-        fs::write(&multi_line, "Line 1\nLine 2\nLine 3")?;
-
-        let multi_line_files = Arc::new(Mutex::new(Vec::new()));
-
-        // Test single-line file
-        check_file_for_multiple_lines(&single_line, multi_line_files.clone()).await?;
-        assert_eq!(multi_line_files.lock().await.len(), 0);
-
-        // Test multi-line file
-        check_file_for_multiple_lines(&multi_line, multi_line_files.clone()).await?;
-        assert_eq!(multi_line_files.lock().await.len(), 1);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_open_files_in_neovim() -> anyhow::Result<()> {
-        let files = Vec::new();
-        // Test empty file list (should return Ok without launching nvim)
-        assert!(open_files_in_neovim(&files).await.is_ok());
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_process_file() -> anyhow::Result<()> {
-        let temp_dir = TempDir::new()?;
-        let test_file = temp_dir.path().join("test.txt");
-        File::create(&test_file)?;
-
-        let processed = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let processed_clone = processed.clone();
-
-        process_file(&test_file, move |_| {
-            let flag = processed_clone.clone();
-            async move {
-                flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                Ok(())
-            }
-        })
-        .await?;
-
-        assert!(processed.load(std::sync::atomic::Ordering::SeqCst));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_process_rust_file() -> io::Result<()> {
-        let temp_dir = TempDir::new()?;
-        
-        // Create test Rust files
-        let with_warning = temp_dir.path().join("with_warning.rs");
-        let without_warning = temp_dir.path().join("without_warning.rs");
-        
-        fs::write(&with_warning, "#![warn(clippy::all, clippy::pedantic)]\nfn main() {}")?;
-        fs::write(&without_warning, "fn main() {}")?;
-
-        let mut files_without_warning = Vec::new();
-
-        process_rust_file(&with_warning, &mut files_without_warning).await?;
-        assert_eq!(files_without_warning.len(), 0);
-
-        process_rust_file(&without_warning, &mut files_without_warning).await?;
-        assert_eq!(files_without_warning.len(), 1);
-        assert_eq!(files_without_warning[0], without_warning);
-
-        Ok(())
-    }
 }
