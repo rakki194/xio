@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::sync::Mutex;
-use walkdir::DirEntry;
 use xio::{
     check_file_for_multiple_lines, delete_files_with_extension, is_git_dir, is_hidden,
     is_target_dir, open_files_in_neovim, process_file, process_rust_file, read_file_content,
@@ -20,7 +19,7 @@ fn get_dir_entry(path: &Path) -> walkdir::DirEntry {
 #[test]
 fn test_is_hidden() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     // Test hidden file
     let hidden_path = temp_dir.path().join(".hidden");
     std::fs::File::create(&hidden_path).unwrap();
@@ -41,7 +40,7 @@ fn test_is_hidden() {
 #[test]
 fn test_is_target_dir() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     // Test target directory
     let target_path = temp_dir.path().join("target");
     std::fs::create_dir(&target_path).unwrap();
@@ -58,7 +57,7 @@ fn test_is_target_dir() {
 #[test]
 fn test_is_git_dir() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     // Test git directory
     let git_path = temp_dir.path().join(".git");
     std::fs::create_dir(&git_path).unwrap();
@@ -134,15 +133,15 @@ async fn test_walk_rust_files() -> std::io::Result<()> {
 async fn test_read_lines() -> std::io::Result<()> {
     let temp_dir = TempDir::new()?;
     let file_path = temp_dir.path().join("test.txt");
-    
+
     std::fs::write(&file_path, "Line 1\nLine 2\nLine 3")?;
-    
+
     let lines = read_lines(&file_path).await?;
     assert_eq!(lines.len(), 3);
     assert_eq!(lines[0], "Line 1");
     assert_eq!(lines[1], "Line 2");
     assert_eq!(lines[2], "Line 3");
-    
+
     Ok(())
 }
 
@@ -150,13 +149,13 @@ async fn test_read_lines() -> std::io::Result<()> {
 async fn test_read_file_content() -> std::io::Result<()> {
     let temp_dir = TempDir::new()?;
     let file_path = temp_dir.path().join("test.txt");
-    
+
     let content = "Test content\nwith multiple lines";
     std::fs::write(&file_path, content)?;
-    
+
     let read_content = read_file_content(&file_path).await?;
     assert_eq!(read_content, content);
-    
+
     Ok(())
 }
 
@@ -164,37 +163,40 @@ async fn test_read_file_content() -> std::io::Result<()> {
 async fn test_write_to_file() -> std::io::Result<()> {
     let temp_dir = TempDir::new()?;
     let file_path = temp_dir.path().join("test.txt");
-    
+
     let content = "Test content";
     write_to_file(&file_path, content).await?;
-    
+
+    // Wait a moment to ensure the file is written
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
     let read_content = std::fs::read_to_string(&file_path)?;
     assert_eq!(read_content, content);
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_delete_files_with_extension() -> std::io::Result<()> {
     let temp_dir = TempDir::new()?;
-    
+
     // Create test files
     std::fs::File::create(temp_dir.path().join("test1.txt"))?;
     std::fs::File::create(temp_dir.path().join("test2.txt"))?;
     std::fs::File::create(temp_dir.path().join("test.rs"))?;
-    
+
     delete_files_with_extension(temp_dir.path(), "txt").await?;
-    
+
     let entries: Vec<_> = std::fs::read_dir(temp_dir.path())?
         .filter_map(Result::ok)
         .collect();
-    
+
     assert_eq!(entries.len(), 1);
     assert_eq!(
         entries[0].path().extension().unwrap().to_string_lossy(),
         "rs"
     );
-    
+
     Ok(())
 }
 
@@ -202,28 +204,33 @@ async fn test_delete_files_with_extension() -> std::io::Result<()> {
 async fn test_check_file_for_multiple_lines() -> anyhow::Result<()> {
     let temp_dir = TempDir::new()?;
     let multi_line_files = Arc::new(Mutex::new(Vec::new()));
-    
+
     // Create test files
     let single_line = temp_dir.path().join("single.txt");
     std::fs::write(&single_line, "Single line")?;
-    
+
     let multi_line = temp_dir.path().join("multi.txt");
     std::fs::write(&multi_line, "Line 1\nLine 2")?;
-    
+
     check_file_for_multiple_lines(&single_line, Arc::clone(&multi_line_files)).await?;
     check_file_for_multiple_lines(&multi_line, Arc::clone(&multi_line_files)).await?;
-    
+
     let files = multi_line_files.lock().await;
     assert_eq!(files.len(), 1);
     assert_eq!(files[0], multi_line);
-    
+
     Ok(())
 }
 
 #[tokio::test]
 async fn test_open_files_in_neovim() -> anyhow::Result<()> {
+    // Test empty file list
+    let empty_files: Vec<PathBuf> = vec![];
+    open_files_in_neovim(&empty_files, None).await?;
+
+    // Test with files using echo instead of nvim
     let files = vec![PathBuf::from("test1.txt"), PathBuf::from("test2.txt")];
-    open_files_in_neovim(&files).await?;
+    open_files_in_neovim(&files, Some("echo")).await?;
     Ok(())
 }
 
@@ -232,10 +239,10 @@ async fn test_process_file() -> anyhow::Result<()> {
     let temp_dir = TempDir::new()?;
     let file_path = temp_dir.path().join("test.txt");
     std::fs::write(&file_path, "Test content")?;
-    
+
     let processed = Arc::new(Mutex::new(false));
     let processed_clone = Arc::clone(&processed);
-    
+
     process_file(&file_path, move |_| {
         let processed = Arc::clone(&processed_clone);
         async move {
@@ -245,7 +252,7 @@ async fn test_process_file() -> anyhow::Result<()> {
         }
     })
     .await?;
-    
+
     assert!(*processed.lock().await);
     Ok(())
 }
@@ -254,11 +261,14 @@ async fn test_process_file() -> anyhow::Result<()> {
 async fn test_process_rust_file() -> std::io::Result<()> {
     let temp_dir = TempDir::new()?;
     let file_path = temp_dir.path().join("test.rs");
-    std::fs::write(&file_path, "#![warn(clippy::all)]\nfn main() {}")?;
-    
+    std::fs::write(
+        &file_path,
+        "#![warn(clippy::all, clippy::pedantic)]\nfn main() {}",
+    )?;
+
     let mut files_without_warning = Vec::new();
     process_rust_file(&file_path, &mut files_without_warning).await?;
-    
+
     assert_eq!(files_without_warning.len(), 0);
     Ok(())
-} 
+}

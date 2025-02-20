@@ -25,9 +25,12 @@
 //! use xio::{walk_directory, anyhow};
 //! 
 //! async fn process_txt_files() -> anyhow::Result<()> {
-//!     walk_directory("./", "txt", |path| async move {
-//!         println!("Processing: {}", path.display());
-//!         Ok(())
+//!     walk_directory("./", "txt", |path| {
+//!         let path = path.to_path_buf();
+//!         async move {
+//!             println!("Processing: {}", path.display());
+//!             Ok(())
+//!         }
 //!     }).await
 //! }
 //! ```
@@ -69,14 +72,12 @@ use walkdir::{DirEntry, WalkDir};
 /// # Examples
 ///
 /// ```
-/// use walkdir::DirEntry;
 /// use std::path::Path;
+/// use walkdir::WalkDir;
+/// use xio::is_hidden;
 /// 
-/// let entry = DirEntry::from_path(Path::new(".hidden_file")).unwrap();
-/// assert!(is_hidden(&entry));
-/// 
-/// let entry = DirEntry::from_path(Path::new("visible_file")).unwrap();
-/// assert!(!is_hidden(&entry));
+/// let entry = WalkDir::new(".").into_iter().next().unwrap().unwrap();
+/// assert!(!is_hidden(&entry)); // "." is not considered hidden
 /// ```
 #[must_use = "Determines if the directory entry is hidden"]
 pub fn is_hidden(entry: &DirEntry) -> bool {
@@ -104,14 +105,12 @@ pub fn is_hidden(entry: &DirEntry) -> bool {
 /// # Examples
 ///
 /// ```
-/// use walkdir::DirEntry;
 /// use std::path::Path;
+/// use walkdir::WalkDir;
+/// use xio::is_target_dir;
 /// 
-/// let entry = DirEntry::from_path(Path::new("target")).unwrap();
-/// assert!(is_target_dir(&entry));
-/// 
-/// let entry = DirEntry::from_path(Path::new("src")).unwrap();
-/// assert!(!is_target_dir(&entry));
+/// let entry = WalkDir::new("src").into_iter().next().unwrap().unwrap();
+/// assert!(!is_target_dir(&entry)); // "src" is not a target directory
 /// ```
 #[must_use = "Determines if the directory entry is a target directory"]
 pub fn is_target_dir(entry: &DirEntry) -> bool {
@@ -136,14 +135,12 @@ pub fn is_target_dir(entry: &DirEntry) -> bool {
 /// # Examples
 ///
 /// ```
-/// use walkdir::DirEntry;
 /// use std::path::Path;
+/// use walkdir::WalkDir;
+/// use xio::is_git_dir;
 /// 
-/// let entry = DirEntry::from_path(Path::new(".git")).unwrap();
-/// assert!(is_git_dir(&entry));
-/// 
-/// let entry = DirEntry::from_path(Path::new("src")).unwrap();
-/// assert!(!is_git_dir(&entry));
+/// let entry = WalkDir::new("src").into_iter().next().unwrap().unwrap();
+/// assert!(!is_git_dir(&entry)); // "src" is not a git directory
 /// ```
 #[must_use = "Determines if the directory entry is a git repository directory"]
 pub fn is_git_dir(entry: &DirEntry) -> bool {
@@ -187,11 +184,15 @@ pub fn is_git_dir(entry: &DirEntry) -> bool {
 ///
 /// ```
 /// use std::path::Path;
+/// use xio::{walk_directory, anyhow};
 /// 
 /// async fn process_files() -> anyhow::Result<()> {
-///     walk_directory("./", "rs", |path| async move {
-///         println!("Processing Rust file: {}", path.display());
-///         Ok(())
+///     walk_directory("./", "txt", |path| {
+///         let path = path.to_path_buf();
+///         async move {
+///             println!("Processing: {}", path.display());
+///             Ok(())
+///         }
 ///     }).await
 /// }
 /// ```
@@ -275,25 +276,30 @@ where
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` if all files were processed successfully, or an error if any
-/// operation failed.
+/// Returns `Ok(())` if all files were processed successfully.
 ///
 /// # Errors
 ///
 /// Returns an `io::Error` if:
-/// - Directory traversal fails
-/// - File operations fail
-/// - The callback function returns an error
+/// * Directory traversal fails (e.g., permission denied)
+/// * The callback function returns an error while processing a file
+/// * A file or directory cannot be accessed
+/// * Path metadata cannot be read
 ///
 /// # Examples
 ///
 /// ```
 /// use std::path::Path;
+/// use std::io;
+/// use xio::walk_rust_files;
 /// 
 /// async fn process_rust_files() -> io::Result<()> {
-///     walk_rust_files("./src", |path| async move {
-///         println!("Found Rust file: {}", path.display());
-///         Ok(())
+///     walk_rust_files("./src", |path| {
+///         let path = path.to_path_buf();
+///         async move {
+///             println!("Found Rust file: {}", path.display());
+///             Ok(())
+///         }
 ///     }).await
 /// }
 /// ```
@@ -347,6 +353,8 @@ where
 ///
 /// ```
 /// use std::path::Path;
+/// use std::io;
+/// use xio::read_lines;
 /// 
 /// async fn read_file_lines() -> io::Result<()> {
 ///     let lines = read_lines(Path::new("example.txt")).await?;
@@ -393,6 +401,8 @@ pub async fn read_lines(path: &Path) -> io::Result<Vec<String>> {
 ///
 /// ```
 /// use std::path::Path;
+/// use std::io;
+/// use xio::read_file_content;
 /// 
 /// async fn read_file() -> io::Result<()> {
 ///     let content = read_file_content(Path::new("example.txt")).await?;
@@ -431,6 +441,8 @@ pub async fn read_file_content(path: &Path) -> io::Result<String> {
 ///
 /// ```
 /// use std::path::Path;
+/// use std::io;
+/// use xio::write_to_file;
 /// 
 /// async fn write_file() -> io::Result<()> {
 ///     write_to_file(
@@ -442,7 +454,8 @@ pub async fn read_file_content(path: &Path) -> io::Result<String> {
 #[must_use = "Writes content to a file and requires handling of the result to ensure data is saved"]
 pub async fn write_to_file(path: &Path, content: &str) -> io::Result<()> {
     let mut file = File::create(path).await?;
-    file.write_all(content.as_bytes()).await
+    file.write_all(content.as_bytes()).await?;
+    file.flush().await
 }
 
 /// Deletes files with a specific extension in a directory and its subdirectories.
@@ -472,6 +485,8 @@ pub async fn write_to_file(path: &Path, content: &str) -> io::Result<()> {
 ///
 /// ```
 /// use std::path::Path;
+/// use std::io;
+/// use xio::delete_files_with_extension;
 /// 
 /// async fn cleanup_temp_files() -> io::Result<()> {
 ///     delete_files_with_extension(Path::new("./"), "tmp").await
@@ -532,6 +547,7 @@ pub async fn delete_files_with_extension(target_dir: &Path, extension: &str) -> 
 /// use std::path::Path;
 /// use std::sync::Arc;
 /// use tokio::sync::Mutex;
+/// use xio::{check_file_for_multiple_lines, anyhow};
 /// 
 /// async fn find_multi_line_files() -> anyhow::Result<()> {
 ///     let files = Arc::new(Mutex::new(Vec::new()));
@@ -559,45 +575,48 @@ pub async fn check_file_for_multiple_lines(
     Ok(())
 }
 
-/// Opens a list of files in Neovim.
+/// Opens a list of files in Neovim or a specified editor.
 ///
-/// This function spawns a Neovim instance and opens all the specified files for editing.
-/// If no files are provided, the function returns successfully without launching Neovim.
+/// This function spawns an editor instance and opens all the specified files for editing.
+/// If no files are provided, the function returns successfully without launching the editor.
 ///
 /// # Arguments
 ///
 /// * `files` - A slice of paths to the files to open
+/// * `editor` - Optional editor command to use instead of nvim (useful for testing)
 ///
 /// # Returns
 ///
-/// Returns `Ok(())` if Neovim was successfully launched and exited.
+/// Returns `Ok(())` if the editor was successfully launched and exited.
 ///
 /// # Errors
 ///
 /// Returns an `anyhow::Error` if:
-/// - Neovim cannot be spawned
-/// - The Neovim process fails to start
+/// - The editor cannot be spawned
+/// - The editor process fails to start
 /// - The process cannot be waited on
 ///
 /// # Examples
 ///
 /// ```
 /// use std::path::PathBuf;
+/// use xio::{open_files_in_neovim, anyhow};
 /// 
 /// async fn edit_files() -> anyhow::Result<()> {
 ///     let files = vec![
 ///         PathBuf::from("file1.txt"),
 ///         PathBuf::from("file2.txt")
 ///     ];
-///     open_files_in_neovim(&files).await
+///     open_files_in_neovim(&files, None).await
 /// }
 /// ```
-pub async fn open_files_in_neovim(files: &[PathBuf]) -> anyhow::Result<()> {
+pub async fn open_files_in_neovim(files: &[PathBuf], editor: Option<&str>) -> anyhow::Result<()> {
     if files.is_empty() {
         return Ok(());
     }
 
-    let mut command = Command::new("nvim");
+    let editor = editor.unwrap_or("nvim");
+    let mut command = Command::new(editor);
     for file in files {
         command.arg(file);
     }
@@ -635,16 +654,18 @@ pub async fn open_files_in_neovim(files: &[PathBuf]) -> anyhow::Result<()> {
 ///
 /// ```
 /// use std::path::Path;
-/// 
-/// async fn custom_processor(path: &Path) -> anyhow::Result<()> {
-///     println!("Processing: {}", path.display());
-///     Ok(())
-/// }
+/// use xio::{process_file, anyhow};
 /// 
 /// async fn process_my_file() -> anyhow::Result<()> {
 ///     process_file(
 ///         Path::new("example.txt"),
-///         custom_processor
+///         |path| {
+///             let path = path.to_path_buf();
+///             async move {
+///                 println!("Processing: {}", path.display());
+///                 Ok(())
+///             }
+///         }
 ///     ).await
 /// }
 /// ```
@@ -674,13 +695,15 @@ where
 /// # Errors
 ///
 /// Returns an `io::Error` if:
-/// - The file cannot be read
-/// - The file content cannot be processed
+/// * The file cannot be read
+/// * The file content cannot be processed
 ///
 /// # Examples
 ///
 /// ```
-/// use std::path::PathBuf;
+/// use std::path::{Path, PathBuf};
+/// use std::io;
+/// use xio::process_rust_file;
 /// 
 /// async fn check_rust_files() -> io::Result<()> {
 ///     let mut files = Vec::new();
