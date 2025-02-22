@@ -1,6 +1,6 @@
 [package]
 name = "xio"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2024"
 license = "MIT"
 description = "A utility library providing common functionality for file system operations and asynchronous file processing"
@@ -13,7 +13,7 @@ categories = ["filesystem", "asynchronous", "development-tools"]
 [dependencies]
 anyhow = { version = "1.0.96", features = ["backtrace"] }
 walkdir = "2.5.0"
-log = "0.4.25"
+log = "0.4.26"
 tokio = { version = "1.43.0", features = ["full"] }
 
 [dev-dependencies]
