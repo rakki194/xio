@@ -15,11 +15,8 @@ A utility library providing common functionality for file system operations and 
 
 ## Installation
 
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-xio = "0.1.6"
+```bash
+cargo add xio
 ```
 
 ## Core Functions
