@@ -25,6 +25,7 @@
 //! 
 //! ```rust
 //! use env_logger::{Builder, Env};
+//! use log::info;
 //! 
 //! // Set RUST_LOG environment variable to configure logging level
 //! // Examples:
@@ -43,12 +44,13 @@
 //! ```rust
 //! use std::path::Path;
 //! use xio::{walk_directory, anyhow};
+//! use log::info;
 //! 
 //! async fn process_txt_files() -> anyhow::Result<()> {
 //!     walk_directory("./", "txt", |path| {
 //!         let path = path.to_path_buf();
 //!         async move {
-//!             println!("Processing: {}", path.display());
+//!             info!("Processing: {}", path.display());
 //!             Ok(())
 //!         }
 //!     }).await
