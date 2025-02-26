@@ -1,4 +1,4 @@
-# xio
+# XIO - Extended I/O Operations Library
 
 A utility library providing common functionality for file system operations and asynchronous file processing in Rust. Designed for efficient file traversal, content manipulation, and batch processing tasks.
 
@@ -12,11 +12,48 @@ A utility library providing common functionality for file system operations and 
 - 🔍 Extension-based file filtering
 - ⚡ Parallel file processing capabilities
 - 🛡️ Robust error handling with anyhow
+- 📝 Configurable logging levels
 
 ## Installation
 
 ```bash
 cargo add xio
+```
+
+## Logging Configuration
+
+XIO uses the `log` crate for logging. You can configure the logging level in two ways:
+
+### Using Environment Variables
+
+```bash
+# Show all debug messages from xio
+export RUST_LOG=xio=debug
+
+# Show only info and above from xio
+export RUST_LOG=xio=info
+
+# Show only warnings and errors from xio
+export RUST_LOG=xio=warn
+
+# Show debug messages from xio and errors from other crates
+export RUST_LOG=error,xio=debug
+```
+
+### Programmatically
+
+```rust
+use env_logger::{Builder, Env};
+
+// Initialize with default info level
+Builder::from_env(Env::default())
+    .filter_module("xio", log::LevelFilter::Info)
+    .init();
+
+// Or use debug level for more verbose output
+Builder::from_env(Env::default())
+    .filter_module("xio", log::LevelFilter::Debug)
+    .init();
 ```
 
 ## Core Functions
@@ -30,12 +67,13 @@ Asynchronously walks through a directory and processes files with a specific ext
 ```rust
 use std::path::Path;
 use xio::{walk_directory, anyhow};
+use log::info;
 
 async fn process_txt_files() -> anyhow::Result<()> {
     walk_directory("./", "txt", |path| {
         let path = path.to_path_buf();
         async move {
-            println!("Processing: {}", path.display());
+            info!("Processing: {}", path.display());
             Ok(())
         }
     }).await
@@ -50,12 +88,13 @@ Specifically designed for processing Rust source files, automatically skipping i
 use std::path::Path;
 use std::io;
 use xio::walk_rust_files;
+use log::info;
 
 async fn process_rust_files() -> io::Result<()> {
     walk_rust_files("./src", |path| {
         let path = path.to_path_buf();
         async move {
-            println!("Found Rust file: {}", path.display());
+            info!("Found Rust file: {}", path.display());
             Ok(())
         }
     }).await
@@ -72,10 +111,11 @@ Asynchronously reads the entire content of a file as a string.
 use std::path::Path;
 use std::io;
 use xio::read_file_content;
+use log::info;
 
 async fn read_file() -> io::Result<()> {
     let content = read_file_content(Path::new("example.txt")).await?;
-    println!("File content: {}", content);
+    info!("File content: {}", content);
     Ok(())
 }
 ```
@@ -88,11 +128,12 @@ Asynchronously reads a file line by line, returning a vector of strings.
 use std::path::Path;
 use std::io;
 use xio::read_lines;
+use log::info;
 
 async fn read_file_lines() -> io::Result<()> {
     let lines = read_lines(Path::new("example.txt")).await?;
     for line in lines {
-        println!("{}", line);
+        info!("{}", line);
     }
     Ok(())
 }
@@ -140,6 +181,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use xio::{check_file_for_multiple_lines, anyhow};
+use log::info;
 
 async fn find_multi_line_files() -> anyhow::Result<()> {
     let files = Arc::new(Mutex::new(Vec::new()));
@@ -148,7 +190,7 @@ async fn find_multi_line_files() -> anyhow::Result<()> {
         files.clone()
     ).await?;
     let result = files.lock().await;
-    println!("Found {} multi-line files", result.len());
+    info!("Found {} multi-line files", result.len());
     Ok(())
 }
 ```
@@ -176,10 +218,11 @@ Returns an iterator over all files with a specific extension in a directory.
 ```rust
 use std::path::Path;
 use xio::fs::get_files_with_extension;
+use log::info;
 
 let path = Path::new("./documents");
 for pdf_file in get_files_with_extension(path, "pdf") {
-    println!("Found PDF: {}", pdf_file.display());
+    info!("Found PDF: {}", pdf_file.display());
 }
 ```
 
@@ -219,6 +262,7 @@ Generic file processor that takes any async function for custom file processing.
 ```rust
 use std::path::Path;
 use xio::{process_file, anyhow};
+use log::info;
 
 async fn process_my_file() -> anyhow::Result<()> {
     process_file(
@@ -226,7 +270,7 @@ async fn process_my_file() -> anyhow::Result<()> {
         |path| {
             let path = path.to_path_buf();
             async move {
-                println!("Processing: {}", path.display());
+                info!("Processing: {}", path.display());
                 Ok(())
             }
         }
@@ -242,6 +286,7 @@ Process a Rust file and check for pedantic warnings.
 use std::path::{Path, PathBuf};
 use std::io;
 use xio::process_rust_file;
+use log::info;
 
 async fn check_rust_files() -> io::Result<()> {
     let mut files = Vec::new();
@@ -249,7 +294,7 @@ async fn check_rust_files() -> io::Result<()> {
         Path::new("src/lib.rs"),
         &mut files
     ).await?;
-    println!("Found {} files without warnings", files.len());
+    info!("Found {} files without warnings", files.len());
     Ok(())
 }
 ```

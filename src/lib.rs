@@ -17,6 +17,26 @@
 //! - Specialized handling for Rust source files
 //! - Batch file processing capabilities
 //! - Integration with external tools (e.g., Neovim)
+//! - Configurable logging with different verbosity levels
+//! 
+//! ## Logging Configuration
+//! 
+//! The library uses the `log` crate for logging. To configure logging in your application:
+//! 
+//! ```rust
+//! use env_logger::{Builder, Env};
+//! 
+//! // Set RUST_LOG environment variable to configure logging level
+//! // Examples:
+//! // export RUST_LOG=xio=debug    # Show all debug messages from xio
+//! // export RUST_LOG=xio=info     # Show only info and above from xio
+//! // export RUST_LOG=xio=warn     # Show only warnings and errors from xio
+//! 
+//! // Initialize logging in your application
+//! Builder::from_env(Env::default())
+//!     .filter_module("xio", log::LevelFilter::Info)  // Default level
+//!     .init();
+//! ```
 //! 
 //! ## Example
 //! 
@@ -38,6 +58,7 @@
 pub mod fs;
 
 pub use anyhow;
+pub use log;
 pub use walkdir;
 
 // Re-export commonly used types
@@ -46,6 +67,7 @@ pub use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use log::{debug, info, warn};
 use tokio::{
     fs::File,
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -207,7 +229,7 @@ where
     Fut: std::future::Future<Output = anyhow::Result<()>> + Send + 'static,
 {
     let dir_ref = dir.as_ref();
-    println!("Starting walk of directory: {dir_ref:?}");
+    debug!("Starting walk of directory: {dir_ref:?}");
     let walker = WalkDir::new(dir_ref).follow_links(true);
 
     let callback = Arc::new(callback);
@@ -220,25 +242,25 @@ where
             let keep = !(file_name.starts_with('.') && file_name != "." && file_name != ".." && !file_name.starts_with(".tmp"))
                 && file_name != ".git"
                 && file_name != "target";
-            println!("Filtering entry: {:?}, keep: {}", e.path(), keep);
+            debug!("Filtering entry: {:?}, keep: {}", e.path(), keep);
             keep
         })
         .filter_map(|r| {
             if let Ok(entry) = r {
-                println!("Found valid entry: {:?}", entry.path());
+                debug!("Found valid entry: {:?}", entry.path());
                 Some(entry)
             } else {
-                println!("Invalid entry: {:?}", r.err());
+                warn!("Invalid entry: {:?}", r.err());
                 None
             }
         })
     {
         let path = entry.path().to_owned();
-        println!("Processing path: {path:?}");
+        debug!("Processing path: {path:?}");
         if let Some(ext) = path.extension() {
-            println!("  Extension: {ext:?}");
+            debug!("  Extension: {ext:?}");
             if ext.to_string_lossy() == extension {
-                println!("  Processing file: {path:?}");
+                info!("Processing file: {path:?}");
                 let callback = Arc::clone(&callback);
                 let handle = tokio::spawn(async move { callback(&path).await });
                 handles.push(handle);
@@ -503,9 +525,9 @@ pub async fn delete_files_with_extension(target_dir: &Path, extension: &str) -> 
                 if file_extension.eq_ignore_ascii_case(extension) {
                     tasks.push(tokio::spawn(async move {
                         if let Err(e) = tokio::fs::remove_file(&path).await {
-                            eprintln!("Failed to remove {}: {e}", path.display());
+                            warn!("Failed to remove {}: {e}", path.display());
                         } else {
-                            println!("Removed: {}", path.display());
+                            info!("Removed: {}", path.display());
                         }
                     }));
                 }
@@ -568,7 +590,7 @@ pub async fn check_file_for_multiple_lines(
     let line_count = content.lines().count();
 
     if line_count > 1 {
-        println!("File with multiple lines found: {}", path.display());
+        debug!("File with multiple lines found: {}", path.display());
         multi_line_files.lock().await.push(path.to_path_buf());
     }
 
