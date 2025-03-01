@@ -58,17 +58,19 @@
 //! ```
 
 pub mod fs;
+pub mod split;
 
 pub use anyhow;
 pub use log;
 pub use walkdir;
 
-// Re-export commonly used types
+// Re-export commonly used types and traits
 pub use std::{
     io::{self, Result as IoResult},
     path::{Path, PathBuf},
     sync::Arc,
 };
+pub use split::{DirectorySplitter, FileMatcher, RegexFileMatcher, SplitConfig};
 use log::{debug, info, warn};
 use tokio::{
     fs::File,
