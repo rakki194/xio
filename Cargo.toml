@@ -11,18 +11,18 @@ keywords = ["filesystem", "async", "io", "utility", "files"]
 categories = ["filesystem", "asynchronous", "development-tools"]
 
 [dependencies]
-anyhow = { version = "1.0.96", features = ["backtrace"] }
+anyhow = { version = "1.0.97", features = ["backtrace"] }
 walkdir = "2.5.0"
 log = "0.4.26"
-tokio = { version = "1.43.0", features = ["full"] }
-env_logger = "0.11.6"
+tokio = { version = "1.44.1", features = ["full"] }
+env_logger = "0.11.7"
 futures = "0.3.31"
 fancy-regex = "0.14.0"
-serde = { version = "1.0.218", features = ["derive"] }
-async-trait = "0.1.86"
+serde = { version = "1.0.219", features = ["derive"] }
+async-trait = "0.1.88"
 
 [dev-dependencies]
-tempfile = "3.17.1"
+tempfile = "3.19.0"
 
 [lib]
 name = "xio"
