@@ -8,6 +8,9 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::Mutex;
 
+/// Type alias for a matcher function that determines if a file should be processed
+pub type MatcherFn = Box<dyn Fn(&Path) -> Result<bool> + Send + Sync>;
+
 /// Configuration for directory splitting operations
 #[derive(Debug, Clone)]
 pub struct SplitConfig {
@@ -26,7 +29,7 @@ pub struct SplitConfig {
 }
 
 impl SplitConfig {
-    /// Creates a new SplitConfig with minimum required parameters
+    /// Creates a new `SplitConfig` with minimum required parameters
     pub fn new(source_dir: impl Into<PathBuf>, num_dirs: usize) -> Self {
         Self {
             source_dir: source_dir.into(),
@@ -39,12 +42,14 @@ impl SplitConfig {
     }
 
     /// Sets the output directory
+    #[must_use]
     pub fn with_output_dir(mut self, output_dir: impl Into<PathBuf>) -> Self {
         self.output_dir = Some(output_dir.into());
         self
     }
 
     /// Sets the directory naming format
+    #[must_use]
     pub fn with_naming(mut self, prefix_format: impl Into<String>, suffix_format: impl Into<String>) -> Self {
         self.prefix_format = prefix_format.into();
         self.suffix_format = suffix_format.into();
@@ -52,6 +57,7 @@ impl SplitConfig {
     }
 
     /// Sets regex patterns for finding accompanying files
+    #[must_use]
     pub fn with_regex_patterns(mut self, patterns: Vec<Regex>) -> Self {
         self.regex_patterns = Some(patterns);
         self
@@ -62,9 +68,9 @@ impl SplitConfig {
 #[async_trait::async_trait]
 pub trait FileMatcher: Send + Sync {
     /// Returns true if the file should be processed
-    fn is_match(&self, path: &Path) -> impl std::future::Future<Output = Result<bool>> + Send;
+    async fn is_match(&self, path: &Path) -> Result<bool>;
     /// Finds accompanying files for a matched file
-    fn find_accompanying_files(&self, path: &Path) -> impl std::future::Future<Output = Result<Vec<PathBuf>>> + Send;
+    async fn find_accompanying_files(&self, path: &Path) -> Result<Vec<PathBuf>>;
 }
 
 /// A directory splitter that distributes files across multiple directories
@@ -74,12 +80,24 @@ pub struct DirectorySplitter<M: FileMatcher> {
 }
 
 impl<M: FileMatcher + Clone + 'static> DirectorySplitter<M> {
-    /// Creates a new DirectorySplitter with the given configuration and matcher
+    /// Creates a new `DirectorySplitter` with the given configuration and matcher
     pub fn new(config: SplitConfig, matcher: M) -> Self {
         Self { config, matcher }
     }
 
     /// Splits the directory according to the configuration
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Creating directories fails
+    /// - Reading from source directory fails
+    /// - Copying files fails
+    ///
+    /// # Panics
+    ///
+    /// Panics if a file name cannot be extracted from a path,
+    /// which should not happen for valid file paths.
     pub async fn split(&self) -> Result<Vec<PathBuf>> {
         let mut created_dirs = Vec::new();
         debug!("Grouping files from source directory");
@@ -127,6 +145,10 @@ impl<M: FileMatcher + Clone + 'static> DirectorySplitter<M> {
     }
 
     /// Cleans up the created directories
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if removing any of the directories fails.
     pub async fn cleanup(&self, dirs: Vec<PathBuf>) -> Result<()> {
         info!("Starting cleanup of {} directories", dirs.len());
         try_join_all(dirs.into_iter().map(|dir| async move {
@@ -174,40 +196,38 @@ impl<M: FileMatcher + Clone + 'static> DirectorySplitter<M> {
 /// A regex-based file matcher that can find accompanying files using patterns
 pub struct RegexFileMatcher {
     /// Function to determine if a file should be processed
-    pub matcher_fn: Box<dyn Fn(&Path) -> Result<bool> + Send + Sync>,
+    pub matcher_fn: MatcherFn,
     /// Optional regex patterns for finding accompanying files
     pub regex_patterns: Option<Vec<Regex>>,
 }
 
 #[async_trait::async_trait]
 impl FileMatcher for RegexFileMatcher {
-    fn is_match(&self, path: &Path) -> impl std::future::Future<Output = Result<bool>> + Send {
-        async move { (self.matcher_fn)(path) }
+    async fn is_match(&self, path: &Path) -> Result<bool> { 
+        (self.matcher_fn)(path) 
     }
 
-    fn find_accompanying_files(&self, path: &Path) -> impl std::future::Future<Output = Result<Vec<PathBuf>>> + Send {
-        async move {
-            let mut accompanying = Vec::new();
+    async fn find_accompanying_files(&self, path: &Path) -> Result<Vec<PathBuf>> {
+        let mut accompanying = Vec::new();
+        
+        if let Some(patterns) = &self.regex_patterns {
+            let dir = path.parent().unwrap();
+            let mut dir_entries = fs::read_dir(dir).await?;
             
-            if let Some(patterns) = &self.regex_patterns {
-                let dir = path.parent().unwrap();
-                let mut dir_entries = fs::read_dir(dir).await?;
-                
-                while let Some(entry) = dir_entries.next_entry().await? {
-                    let accompanying_path = entry.path();
-                    if accompanying_path.is_file() {
-                        let file_name = accompanying_path.to_str().unwrap();
-                        for pattern in patterns {
-                            if pattern.is_match(file_name)? {
-                                accompanying.push(accompanying_path.clone());
-                                break;
-                            }
+            while let Some(entry) = dir_entries.next_entry().await? {
+                let accompanying_path = entry.path();
+                if accompanying_path.is_file() {
+                    let file_name = accompanying_path.to_str().unwrap();
+                    for pattern in patterns {
+                        if pattern.is_match(file_name)? {
+                            accompanying.push(accompanying_path.clone());
+                            break;
                         }
                     }
                 }
             }
-            
-            Ok(accompanying)
         }
+        
+        Ok(accompanying)
     }
 } 
